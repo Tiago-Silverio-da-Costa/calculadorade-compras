@@ -1,9 +1,12 @@
 "use client"
 
-import { useState, ChangeEvent } from "react";
+import { useState, useEffect } from "react";
 import { MdEdit } from "react-icons/md";
 import { MdDelete } from "react-icons/md";
 import { FaCheck } from "react-icons/fa";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm, Controller } from "react-hook-form";
 
 type Item = {
   name: string;
@@ -11,34 +14,51 @@ type Item = {
   isEditable: boolean;
 };
 
+const schema = z.object({
+  name: z.string().nonempty("O nome é obrigatório"),
+  price: z.string().refine((val) => !isNaN(parseFloat(val)), {
+    message: "O preço deve ser um número válido",
+  }),
+});
+type FormValues = z.infer<typeof schema>;
+
 export default function Home() {
 
-  const [items, setItems] = useState<Item[]>(() => {
+  const [items, setItems] = useState<Item[]>([]);
+
+  useEffect(() => {
     const storedItems = sessionStorage.getItem("items");
-    return storedItems ? JSON.parse(storedItems) : []
-  })
-  const [currentItem, setCUrrentItem] = useState({
-    name: "",
-    price: "",
-    isEditable: false,
-  })
+    if (storedItems) {
+      setItems(JSON.parse(storedItems));
+    }
+  }, []);
+
+  useEffect(() => {
+    sessionStorage.setItem("items", JSON.stringify(items));
+  }, [items]);
+
+  const {
+    control,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { name: "", price: "" },
+  });
+
 
   const saveToSessionStorage = (newItems: Item[]) => {
-    sessionStorage.setItem("items", JSON.stringify(newItems))
+    sessionStorage.setItem("items", JSON.stringify(newItems));
   };
 
-  const handleAddItem = () => {
-    const newItems = [...items, { ...currentItem, isEditable: false }];
-    setItems(newItems);
-    saveToSessionStorage(newItems);
-    setCUrrentItem({
-      name: "",
-      price: "",
-      isEditable: false,
-    })
-  }
 
-  const handleSaveItem = (index:number,  updatedItem: Item) => {
+  const onSubmit = (data: FormValues) => {
+    const newItem = { ...data, isEditable: false };
+    setItems((prevItems) => [...prevItems, newItem]);
+  };
+
+  const handleSaveItem = (index: number, updatedItem: Item) => {
     const updatedItems = items.map((item, i) =>
       i === index ? { ...updatedItem, isEditable: false } : item
     );
@@ -48,7 +68,7 @@ export default function Home() {
 
   const handleEditItem = (index: number) => {
     const updatedItems = items.map((item, i) =>
-      i === index ? { ...item, isEditable: false } : item
+      i === index ? { ...item, isEditable: true } : item
     );
     setItems(updatedItems);
     saveToSessionStorage(updatedItems);
@@ -63,65 +83,103 @@ export default function Home() {
   const calculateTotal = (): string =>
     items
       .reduce((sum, item) => sum + parseFloat(item.price || "0"), 0)
-      .toFixed(2)
-
-  const handleInputChange = (
-    e: ChangeEvent<HTMLInputElement>,
-    field: keyof Item
-  ) => {
-    setCUrrentItem({ ...currentItem, [field]: e.target.value })
-  }
+      .toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   return (
     <div className="flex flex-col py-8 m-auto w-5/6 max-w-2xl">
-      <div className="flex flex-wrap justify-center w-full rounded-t-2xl py-8 gap-2 bg-purple-700 text-white">
-        <div className="flex">
-          <div className="flex items-center px-6 gap-2">
-            <div className="flex text-black items-center md:flex-row flex-col w-full gap-2">
-              <input
-                className="w-full px-4 py-2 rounded-md border border-gray-300 text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="Insira o item"
-                value={currentItem.name}
-                onChange={(e) => handleInputChange(e, "name")}
-              />
-              <input
-                className="w-full px-4 py-2 rounded-md border border-gray-300 text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="Insira o preço do item"
-                value={currentItem.price}
-                onChange={(e) => handleInputChange(e, "price")}
-              />
+      <div className="flex flex-wrap justify-center bg-slate-100 w-full rounded-t-2xl py-8 gap-2  text-white">
+        <div className="flex w-full">
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="w-full flex items-start px-6 gap-2">
+            <div className="flex text-black items-start md:flex-row flex-col w-full gap-2">
+              <div className="flex flex-col gap-2 items-start w-full">
+                <Controller
+                  name="name"
+                  control={control}
+                  render={({ field }) => (
+                    <input
+                      {...field}
+                      className="w-full px-4 py-2 rounded-md border border-gray-300 text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="Insira o item"
+                      inputMode="text"
+                    />
+                  )}
+                />
+                {errors.name && (
+                  <p className="text-red-500 text-sm">{errors.name.message}</p>
+                )}
+              </div>
+              <div className="flex flex-col gap-2 items-start w-full">
+                <Controller
+                  name="price"
+                  control={control}
+                  render={({ field }) => (
+                    <input
+                      {...field}
+                      className="w-full px-4 py-2 rounded-md border border-gray-300 text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="Insira o preço do item"
+                      inputMode="decimal"
+                    />
+                  )}
+                />
+                {errors.price && (
+                  <p className="text-red-500 text-sm">{errors.price.message}</p>
+                )}
+              </div>
             </div>
             <button
+              type="submit"
               className="text-white bg-green-500 p-2 rounded-lg"
-              onClick={handleAddItem}
             >
               <FaCheck />
             </button>
-          </div>
+          </form>
         </div>
       </div>
-      <div className="flex flex-col bg-white py-4 px-6 rounded-b-2xl">
-        {items.map((item, index) => (
+      <div className={`flex flex-col gap-2 bg-slate-400 ${items.length === 0 ? "" : "py-8 px-6"}`}>
+        {(items || []).map((item, index) => (
           <div
             key={index}
-            className="flex justify-between items-center py-2 border-b border-gray-300"
+            className="flex gap-2 items-center"
           >
-            <input
-              className="w-1/2 px-4 py-2 text-black border border-gray-300 rounded-md focus:outline-none"
-              value={item.name}
-              disabled={!item.isEditable}
-              onChange={(e) =>
-                handleSaveItem(index, { ...item, name: e.target.value })
-              }
-            />
-            <input
-              className="w-1/4 px-4 py-2 text-black border border-gray-300 rounded-md focus:outline-none"
-              value={item.price}
-              disabled={!item.isEditable}
-              onChange={(e) =>
-                handleSaveItem(index, { ...item, price: e.target.value })
-              }
-            />
+            <div className="flex flex-col gap-2 items-start w-full">
+              <Controller
+                name="name"
+                control={control}
+                render={({ field }) => (
+                  <input
+                    {...field}
+                    disabled={!item.isEditable}
+                    className="w-full px-4 py-2 rounded-md border border-gray-300 text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="Insira o item"
+                    inputMode="text"
+                  />
+                )}
+              />
+              {errors.name && (
+                <p className="text-red-500 text-sm">{errors.name.message}</p>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 items-start w-full">
+              <Controller
+                name="price"
+                control={control}
+                render={({ field }) => (
+                  <input
+                    {...field}
+                    disabled={!item.isEditable}
+                    className="w-full px-4 py-2 rounded-md border border-gray-300 text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="Insira o preço do item"
+                    inputMode="decimal"
+                  />
+                )}
+              />
+              {errors.price && (
+                <p className="text-red-500 text-sm">{errors.price.message}</p>
+              )}
+            </div>
             {item.isEditable ? (
               <button
                 className="text-white bg-green-500 p-2 rounded-lg"
@@ -133,25 +191,27 @@ export default function Home() {
               </button>
             ) : (
               <>
-                <button
-                  className="text-white bg-slate-600 p-2 rounded-lg"
-                  onClick={() => handleEditItem(index)}
-                >
-                  <MdEdit />
-                </button>
-                <button
-                  className="text-white bg-red-600 p-2 rounded-lg"
-                  onClick={() => handleDeleteItem(index)}
-                >
-                  <MdDelete />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="text-white bg-slate-600 p-2 rounded-lg"
+                    onClick={() => handleEditItem(index)}
+                  >
+                    <MdEdit />
+                  </button>
+                  <button
+                    className="text-white bg-red-600 p-2 rounded-lg"
+                    onClick={() => handleDeleteItem(index)}
+                  >
+                    <MdDelete />
+                  </button>
+                </div>
               </>
             )}
           </div>
         ))}
       </div>
-      <div className="flex justify-end py-4 text-lg font-semibold">
-        <p>Total: R$ {calculateTotal()}</p>
+      <div className="flex justify-end text-lg font-semibold bg-slate-600 py-4 px-6 rounded-b-2xl">
+        <p>Total: {calculateTotal()}</p>
       </div>
     </div>
   );
